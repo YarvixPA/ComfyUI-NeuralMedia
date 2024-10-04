@@ -33,8 +33,8 @@ def get_device_by_name(device):
 def clone_model_repo(model_name):
     repo_urls = {
         "BiRefNet": "https://huggingface.co/ZhengPeng7/BiRefNet",
+        "BiRefNet_lite": "https://huggingface.co/ZhengPeng7/BiRefNet_lite",
         "BiRefNet_lite-2K": "https://huggingface.co/ZhengPeng7/BiRefNet_lite-2K",
-        "BiRefNet_lite": "https://huggingface.co/ZhengPeng7/BiRefNet_lite"
     }
 
     repo_url = repo_urls.get(model_name)
@@ -67,9 +67,9 @@ def pil2tensor(image):
 # Resize the image based on the model
 def resize_image(image, model_name):
     size_map = {
-        "BiRefNet_lite-2K": (1440, 2560),
         "BiRefNet": (1024, 1024),
         "BiRefNet_lite": (1024, 1024),
+        "BiRefNet_lite-2K": (1440, 2560),
     }
     
     size = size_map.get(model_name)
@@ -84,7 +84,7 @@ class BiRefNetNode:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "BiRefNet_model": (["select model", "BiRefNet", "BiRefNet_lite-2K", "BiRefNet_lite"], {"default": "select model"}),  
+                "BiRefNet_model": (["--select model--", "BiRefNet", "BiRefNet_lite", "BiRefNet_lite-2K"], {"default": "--select model--"}),  
                 "background_color": (["transparency", "green", "white", "red", "yellow", "blue", "black", "pink", "purple", "brown", "violet", 
                                       "wheat", "whitesmoke", "yellowgreen", "turquoise", "tomato", "thistle", "teal", "tan", "steelblue", 
                                       "springgreen", "snow", "slategrey", "slateblue", "skyblue", "orange"], 
