@@ -1,5 +1,4 @@
 import importlib.util
-import subprocess
 import sys
 from pathlib import Path
 import traceback
@@ -14,15 +13,6 @@ def load_module(module_name, file_path):
     spec.loader.exec_module(module)
     return module
 
-def install_requirements():
-    """Installs dependencies if the requirements.txt file exists."""
-    req_path = Path(__file__).parent / 'requirements.txt'
-    if req_path.exists():
-        try:
-            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', str(req_path)])
-        except subprocess.CalledProcessError as e:
-            print(f"Error installing dependencies: {e}\n{traceback.format_exc()}")
-
 def load_nodes():
     """Loads nodes from the nodes folder."""
     nodes_path = Path(__file__).parent / 'nodes'
@@ -36,8 +26,7 @@ def load_nodes():
                 print(f"Error loading {file.name}: {e}\n{traceback.format_exc()}")
 
 # Execute functions
-install_requirements()
 load_nodes()
 
-__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
-
+WEBDIRECTORY = "./js"
+_all = ["NODE_CLASS_MAPPINGS", 'NODE_DISPLAY_NAME_MAPPINGS', "WEB_DIRECTORY"]
