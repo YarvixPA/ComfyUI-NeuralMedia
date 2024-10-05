@@ -23,7 +23,7 @@ class ApplyControlNet:
     RETURN_TYPES = ("CONDITIONING","CONDITIONING")
     RETURN_NAMES = ("positive", "negative")
     FUNCTION = "apply_controlnet"
-    CATEGORY = "ComfyUI-NeuralMedia/Inpaint and Outpaint"
+    CATEGORY = "ComfyUI-NeuralMedia/ControlNets"
 
     def apply_controlnet(self, positive, negative, control_net, image, strength, start_percent, end_percent, vae=None):
         if strength == 0:
