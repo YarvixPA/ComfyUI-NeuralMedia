@@ -41,9 +41,11 @@ def clone_model_repo(model_name):
     if not repo_url:
         raise ValueError("Invalid model selected.")
 
-    target_path = os.path.join("ComfyUI", "models", "BiRefNet", "ComfyUI-NeuralMedia", model_name)
+    target_path = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "BiRefNet", model_name)
+    correct_path = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "BiRefNet")
+    if not os.path.exists(correct_path):
+        os.makedirs(correct_path, exist_ok=True)
     if not os.path.exists(target_path):
-        os.makedirs(target_path, exist_ok=True)
         # Print message indicating that the model is being downloaded
         print(f"🖌️ ComfyUI-NeuralMedia downloading ({model_name})")
         # Run git clone silently (suppress output)
@@ -85,9 +87,9 @@ class BiRefNetNode:
             "required": {
                 "image": ("IMAGE",),
                 "BiRefNet_model": (["--select model--", "BiRefNet", "BiRefNet_lite", "BiRefNet_lite-2K"], {"default": "--select model--"}),  
-                "background_color": (["transparency", "green", "white", "red", "yellow", "blue", "black", "pink", "purple", "brown", "violet", 
-                                      "wheat", "whitesmoke", "yellowgreen", "turquoise", "tomato", "thistle", "teal", "tan", "steelblue", 
-                                      "springgreen", "snow", "slategrey", "slateblue", "skyblue", "orange"], 
+                "background_color": (["transparency", "green", "white", "red", "yellow", "blue", "black", "pink", "purple", "brown", "violet",
+                                      "wheat", "whitesmoke", "yellowgreen", "turquoise", "tomato", "thistle", "teal", "tan", "steelblue",
+                                      "springgreen", "snow", "slategrey", "slateblue", "skyblue", "orange"],
                                       {"default": "transparency"}),  
                 "device": (["auto", "cuda", "cpu"], {"default": "auto"})  
             }
@@ -106,7 +108,7 @@ class BiRefNetNode:
         clone_model_repo(BiRefNet_model)
 
         # Load the selected model
-        model_path = os.path.join("ComfyUI", "models", "BiRefNet", "ComfyUI-NeuralMedia", BiRefNet_model)
+        model_path = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "BiRefNet", BiRefNet_model)
         birefnet = AutoModelForImageSegmentation.from_pretrained(model_path, trust_remote_code=True)
         device = get_device_by_name(device)
         
