@@ -11,19 +11,19 @@ class TileCheckpointPatchNode:
         return {
             "required": {
                 "model": ("MODEL",),
-                "clip": ("CLIP",),  # Se agrega el input CLIP
+                "clip": ("CLIP",),  # Adding the CLIP input
                 "vae": ("VAE",),
                 "tiling": (["enable", "x_only", "y_only", "disable"],),
                 "copy_option": (["Make a copy", "Modify in place"],),
             },
         }
 
-    RETURN_TYPES = ("MODEL", "CLIP", "VAE")  # Se agrega CLIP en los outputs
+    RETURN_TYPES = ("MODEL", "CLIP", "VAE")  # Adding CLIP to the outputs
     FUNCTION = "tile_checkpoint_patch"
     CATEGORY = "ComfyUI-NeuralMedia/Tile"
 
     def tile_checkpoint_patch(self, model, clip, vae, tiling, copy_option):
-        # Duplicar o modificar en el lugar
+        # Duplicate or modify in place
         if copy_option == "Modify in place":
             model_copy = model
             vae_copy = vae
@@ -31,13 +31,13 @@ class TileCheckpointPatchNode:
             model_copy = copy.deepcopy(model)
             vae_copy = copy.deepcopy(vae)
         
-        # Aplicar tiling en el modelo
+        # Apply tiling to the model
         self.apply_tiling(model_copy.model, tiling)
         
-        # Aplicar tiling en el VAE
+        # Apply tiling to the VAE
         self.apply_tiling(vae_copy.first_stage_model, tiling)
         
-        # Retornar el modelo, clip y vae
+        # Return the model, clip, and vae
         return (model_copy, clip, vae_copy)
 
     def apply_tiling(self, model, tiling):
