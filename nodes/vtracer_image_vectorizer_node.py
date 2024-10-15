@@ -47,17 +47,14 @@ class VTracerImageVectorizerNode:
             elif image.shape[0] == 1:
                 image = image.squeeze(0)
         
-        # Save the image temporarily
-        input_path = "/tmp/temp_image.png"
-        Image.fromarray(image).save(input_path)
+        # Convert the image to pixels and use VTracer to vectorize directly from pixels
+        img = Image.fromarray(image).convert('RGBA')
+        pixels = list(img.getdata())
 
-        # Output path
-        output_path = "/tmp/temp_image.svg"
-
-        # Vectorize the image using VTracer
-        vtracer.convert_image_to_svg_py(
-            input_path,
-            output_path,
+        # Vectorize the image using VTracer and get the SVG as a string
+        vectorized_image_svg = vtracer.convert_pixels_to_svg(
+            pixels,
+            size=img.size,
             colormode=colormode,
             hierarchical=hierarchical,
             mode=mode,
@@ -70,10 +67,6 @@ class VTracerImageVectorizerNode:
             splice_threshold=splice_threshold,
             path_precision=path_precision
         )
-
-        # Read the generated SVG file
-        with open(output_path, 'r') as file:
-            vectorized_image_svg = file.read()
 
         # Save the vector file
         filename_prefix += self.prefix_append
