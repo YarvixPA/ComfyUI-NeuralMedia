@@ -11,18 +11,17 @@ class TileCheckpointPatchNode:
         return {
             "required": {
                 "model": ("MODEL",),
-                "clip": ("CLIP",),  # Adding the CLIP input
                 "vae": ("VAE",),
                 "tiling": (["enable", "x_only", "y_only", "disable"],),
                 "copy_option": (["Make a copy", "Modify in place"],),
             },
         }
 
-    RETURN_TYPES = ("MODEL", "CLIP", "VAE")  # Adding CLIP to the outputs
+    RETURN_TYPES = ("MODEL", "VAE")  # Removed CLIP from the outputs
     FUNCTION = "tile_checkpoint_patch"
     CATEGORY = "ComfyUI-NeuralMedia/Tile"
 
-    def tile_checkpoint_patch(self, model, clip, vae, tiling, copy_option):
+    def tile_checkpoint_patch(self, model, vae, tiling, copy_option):
         # Duplicate or modify in place
         if copy_option == "Modify in place":
             model_copy = model
@@ -37,8 +36,8 @@ class TileCheckpointPatchNode:
         # Apply tiling to the VAE
         self.apply_tiling(vae_copy.first_stage_model, tiling)
         
-        # Return the model, clip, and vae
-        return (model_copy, clip, vae_copy)
+        # Return the model and vae (CLIP removed)
+        return (model_copy, vae_copy)
 
     def apply_tiling(self, model, tiling):
         if tiling == "enable":
