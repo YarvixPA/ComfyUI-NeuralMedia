@@ -54,8 +54,17 @@ def apply_crop_masking(image, mask, padding, resize_size):
     cropped_image = image[top:bottom, left:right]
     cropped_mask = mask[top:bottom, left:right]
     if resize_size > 0:
-        cropped_image = cv2.resize(cropped_image, (resize_size, resize_size), interpolation=cv2.INTER_LANCZOS4)
-        cropped_mask = cv2.resize(cropped_mask, (resize_size, resize_size), interpolation=cv2.INTER_LANCZOS4)
+        # Resize maintaining aspect ratio
+        original_height, original_width = cropped_image.shape[:2]
+        aspect_ratio = original_width / original_height
+        if original_height > original_width:
+            new_height = resize_size
+            new_width = int(resize_size * aspect_ratio)
+        else:
+            new_width = resize_size
+            new_height = int(resize_size / aspect_ratio)
+        cropped_image = cv2.resize(cropped_image, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
+        cropped_mask = cv2.resize(cropped_mask, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
     return cropped_image, cropped_mask
 
 # Outpainting node class

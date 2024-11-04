@@ -71,7 +71,7 @@ def apply_crop_masking(image, mask, padding, resize_size):
     """
     y_indices, x_indices = np.where(mask >= 0.5)
     if len(y_indices) == 0 or len(x_indices) == 0:
-        return image, mask  # No valid area
+        return image, mask, None  # No valid area
 
     top, bottom = max(0, y_indices.min() - padding), min(image.shape[0], y_indices.max() + padding)
     left, right = max(0, x_indices.min() - padding), min(image.shape[1], x_indices.max() + padding)
@@ -93,7 +93,16 @@ def apply_crop_masking(image, mask, padding, resize_size):
         cropped_image = cv2.resize(cropped_image, (resize_size, resize_size), interpolation=cv2.INTER_LANCZOS4)
         cropped_mask = cv2.resize(cropped_mask, (resize_size, resize_size), interpolation=cv2.INTER_LANCZOS4)
 
-    return cropped_image, cropped_mask
+    weld_data = {
+        'top': top,
+        'bottom': bottom,
+        'left': left,
+        'right': right,
+        'original_image': image,
+        'crop_masking_enabled': True
+    }
+
+    return cropped_image, cropped_mask, weld_data
 
 # Inpainting node class
 class InpaintNode:
@@ -113,7 +122,7 @@ class InpaintNode:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_TYPES = ("WELD_DATA", "IMAGE", "MASK")
     FUNCTION = "execute"
     CATEGORY = "ComfyUI-NeuralMedia/Inpaint and Outpaint"
 
@@ -131,14 +140,17 @@ class InpaintNode:
 
         result_image = apply_mask_content(np_image, blurred_mask, mask_content)
 
+        weld_data = None
         if crop_masking:
             resize_value = 0 if resize_crop_masking == "none" else int(resize_crop_masking)
-            result_image, blurred_mask = apply_crop_masking(result_image, blurred_mask, padding_crop_masking, resize_value)
+            result_image, blurred_mask, weld_data = apply_crop_masking(result_image, blurred_mask, padding_crop_masking, resize_value)
+        else:
+            weld_data = {'crop_masking_enabled': False}
 
         final_image_tensor = numpy_to_tensor(result_image)
         final_mask_tensor = numpy_to_tensor(blurred_mask)
 
-        return (final_image_tensor, final_mask_tensor)
+        return (weld_data, final_image_tensor, final_mask_tensor)
 
 NODE_CLASS_MAPPINGS = {
     "InpaintNode": InpaintNode
