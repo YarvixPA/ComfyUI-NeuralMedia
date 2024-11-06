@@ -50,7 +50,6 @@ def apply_mask_content(image, mask, content):
     if content == "latent nothing":
         fill_color = np.full_like(image, 0.5)
         return (1 - mask[..., None]) * image + mask[..., None] * fill_color
-
     elif content == "fill":
         image_uint8 = (image * 255).astype(np.uint8)
         mask_uint8 = (mask * 255).astype(np.uint8)
@@ -61,7 +60,6 @@ def apply_mask_content(image, mask, content):
         # Apply Gaussian blur
         blurred_inpainted = cv2.GaussianBlur(inpainted_float, (5, 5), 0)
         return (1 - mask[..., None]) * image + mask[..., None] * blurred_inpainted
-
     return image  # For 'original' or default content
 
 # Function to apply cropping to the image and mask if 'crop_masking' is True
@@ -71,38 +69,35 @@ def apply_crop_masking(image, mask, padding, resize_size):
     """
     y_indices, x_indices = np.where(mask >= 0.5)
     if len(y_indices) == 0 or len(x_indices) == 0:
-        return image, mask, None  # No valid area
-
+        return image, mask, (0, 0, image.shape[1], image.shape[0])  # No valid area, return full image and mask
+    
     top, bottom = max(0, y_indices.min() - padding), min(image.shape[0], y_indices.max() + padding)
     left, right = max(0, x_indices.min() - padding), min(image.shape[1], x_indices.max() + padding)
-
-    # Ensure 1:1 aspect ratio
+    
+    # Ensure a 1:1 aspect ratio by adjusting the cropping box
     height, width = bottom - top, right - left
     if height > width:
         diff = height - width
-        left, right = max(0, left - diff // 2), min(image.shape[1], right + diff - diff // 2)
+        left = max(0, left - diff // 2)
+        right = min(image.shape[1], right + (diff - diff // 2))
     elif width > height:
         diff = width - height
-        top, bottom = max(0, top - diff // 2), min(image.shape[0], bottom + diff - diff // 2)
-
+        top = max(0, top - diff // 2)
+        bottom = min(image.shape[0], bottom + (diff - diff // 2))
+    
+    # Perform the crop
     cropped_image = image[top:bottom, left:right]
     cropped_mask = mask[top:bottom, left:right]
-
-    # Resize with Lanczos if necessary
+    
+    # Store the cropping coordinates
+    crop_coords = (top, bottom, left, right)
+    
+    # Resize with Lanczos if necessary, maintaining aspect ratio
     if resize_size > 0:
         cropped_image = cv2.resize(cropped_image, (resize_size, resize_size), interpolation=cv2.INTER_LANCZOS4)
         cropped_mask = cv2.resize(cropped_mask, (resize_size, resize_size), interpolation=cv2.INTER_LANCZOS4)
-
-    weld_data = {
-        'top': top,
-        'bottom': bottom,
-        'left': left,
-        'right': right,
-        'original_image': image,
-        'crop_masking_enabled': True
-    }
-
-    return cropped_image, cropped_mask, weld_data
+    
+    return cropped_image, cropped_mask, crop_coords
 
 # Inpainting node class
 class InpaintNode:
@@ -114,7 +109,7 @@ class InpaintNode:
                 "mask_expand": ("INT", {"default": 0, "min": 0, "max": 100}),
                 "mask_blur": ("FLOAT", {"default": 4.0, "min": 0.0, "max": 50.0}),
                 "mask_content": (["original", "fill", "latent nothing"], {"default": "original"}),
-                "crop_masking": ("BOOLEAN", {"default": False, "label_on": "Yes", "label_off": "No"}),  # Moved here
+                "crop_masking": ("BOOLEAN", {"default": False, "label_on": "Yes", "label_off": "No"}),
                 "padding_crop_masking": ("INT", {"default": 32, "min": 0, "max": 100}),
                 "resize_crop_masking": (["none", "1024", "2048", "4096"], {"default": "none"}),
                 "image": ("IMAGE",),
@@ -129,27 +124,34 @@ class InpaintNode:
     def execute(self, image, mask, crop_masking, mask_mode, mask_expand, mask_blur, mask_content, padding_crop_masking, resize_crop_masking):
         np_image = tensor_to_numpy(image)
         np_mask = tensor_to_numpy(mask)
-
         if np_mask.ndim == 3:
             np_mask = np_mask[:, :, 0]
-
         np_mask = np.clip(np_mask, 0, 1)
         np_mask = apply_mask_mode(np_mask, mask_mode)
         np_mask = apply_mask_expand(np_mask, mask_expand)
         blurred_mask = apply_blur(np_mask, mask_blur)
-
         result_image = apply_mask_content(np_image, blurred_mask, mask_content)
+        
+        weld_data = {
+            "original_image": np_image,
+            "top": 0, "bottom": np_image.shape[0],
+            "left": 0, "right": np_image.shape[1]
+        }
 
-        weld_data = None
         if crop_masking:
             resize_value = 0 if resize_crop_masking == "none" else int(resize_crop_masking)
-            result_image, blurred_mask, weld_data = apply_crop_masking(result_image, blurred_mask, padding_crop_masking, resize_value)
-        else:
-            weld_data = {'crop_masking_enabled': False}
-
+            result_image, blurred_mask, crop_coords = apply_crop_masking(result_image, blurred_mask, padding_crop_masking, resize_value)
+            top, bottom, left, right = crop_coords
+            weld_data.update({
+                "top": top,
+                "bottom": bottom,
+                "left": left,
+                "right": right
+            })
+        
         final_image_tensor = numpy_to_tensor(result_image)
         final_mask_tensor = numpy_to_tensor(blurred_mask)
-
+        
         return (weld_data, final_image_tensor, final_mask_tensor)
 
 NODE_CLASS_MAPPINGS = {

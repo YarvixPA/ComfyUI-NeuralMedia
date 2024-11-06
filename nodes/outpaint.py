@@ -85,7 +85,7 @@ class OutpaintNode:
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK")
+    RETURN_TYPES = ("WELD_DATA", "IMAGE", "MASK")
     FUNCTION = "execute"
     CATEGORY = "ComfyUI-NeuralMedia/Inpaint and Outpaint"
     
@@ -101,21 +101,39 @@ class OutpaintNode:
         
         # 4. Blur the mask
         blurred_mask = blur_mask(mask, mask_blur)
-
+        
         # 5. Crop the image and mask if crop_masking is enabled
+        weld_data = {
+            "original_image": expanded_image,
+            "top": top,
+            "bottom": top + np_image.shape[0],
+            "left": left,
+            "right": left + np_image.shape[1],
+            "expanded_h": expanded_image.shape[0],
+            "expanded_w": expanded_image.shape[1]
+        }
+        
         if crop_masking:
             resize_value = 0 if resize_crop_masking == "none" else int(resize_crop_masking)
             expanded_image, blurred_mask = apply_crop_masking(expanded_image, blurred_mask, padding_crop_masking, resize_value)
-
+            y_indices, x_indices = np.where(blurred_mask >= 0.5)
+            if len(y_indices) > 0 and len(x_indices) > 0:
+                weld_data.update({
+                    "top": y_indices.min(),
+                    "bottom": y_indices.max(),
+                    "left": x_indices.min(),
+                    "right": x_indices.max()
+                })
+        
         # 6. Apply inpainting using Navier-Stokes
         inpainted_image = cv2.inpaint(expanded_image, (blurred_mask * 255).astype(np.uint8), 3, cv2.INPAINT_NS)
-
+        
         # 7. Convert back to tensor
         final_image_tensor = numpy_to_tensor(inpainted_image)
         final_mask_tensor = torch.from_numpy(blurred_mask).unsqueeze(0)
-
-        # 8. Return the image and mask
-        return (final_image_tensor, final_mask_tensor)
+        
+        # 8. Return the image, mask, and weld_data
+        return (weld_data, final_image_tensor, final_mask_tensor)
 
 NODE_CLASS_MAPPINGS = {
     "OutpaintNode": OutpaintNode
