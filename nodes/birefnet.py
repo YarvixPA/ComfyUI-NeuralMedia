@@ -7,78 +7,51 @@ import numpy as np
 from PIL import Image
 import torch.nn.functional as F
 
-torch.set_float32_matmul_precision("high")
+torch.set_float32_matmul_precision("high")  # Set high precision for matrix multiplications
 
-# Define image transformations based on the model
-def get_transform_image(model_name):
-    if model_name == "BiRefNet_lite-2K":
-        resize_dims = (1440, 2560)
-    elif model_name in ["BiRefNet", "BiRefNet_lite"]:
-        resize_dims = (1024, 1024)
-    else:
-        raise ValueError("Unrecognized model.")
-    
-    # Standard image transformation
+# Model configuration with dimensions and repository URLs
+MODEL_CONFIGS = {
+    "BiRefNet": {"resize_dims": (1024, 1024), "repo_url": "https://huggingface.co/ZhengPeng7/BiRefNet"},
+    "BiRefNet_lite": {"resize_dims": (1024, 1024), "repo_url": "https://huggingface.co/ZhengPeng7/BiRefNet_lite"},
+    "BiRefNet_lite-2K": {"resize_dims": (1440, 2560), "repo_url": "https://huggingface.co/ZhengPeng7/BiRefNet_lite-2K"},
+    "RMBG_2.0": {"resize_dims": (1024, 1024), "repo_url": "https://huggingface.co/briaai/RMBG-2.0"}
+}
+
+def get_transform(model_name):
+    """Define image transformation based on model-specific dimensions."""
+    dims = MODEL_CONFIGS[model_name]["resize_dims"]
     return transforms.Compose([
-        transforms.Resize(resize_dims),
+        transforms.Resize(dims),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
     ])
 
-# Get the correct device (auto, cuda, cpu)
-def get_device_by_name(device):
+def select_device(device):
+    """Select device based on availability and user preference."""
     return "cuda" if device == 'auto' and torch.cuda.is_available() else device
 
-# Clone the model repository if it doesn't exist
-def clone_model_repo(model_name):
-    repo_urls = {
-        "BiRefNet": "https://huggingface.co/ZhengPeng7/BiRefNet",
-        "BiRefNet_lite": "https://huggingface.co/ZhengPeng7/BiRefNet_lite",
-        "BiRefNet_lite-2K": "https://huggingface.co/ZhengPeng7/BiRefNet_lite-2K",
-    }
-
-    repo_url = repo_urls.get(model_name)
-    if not repo_url:
-        raise ValueError("Invalid model selected.")
-
+def manage_model_files(model_name, update_model):
+    """Download or update model files as necessary."""
+    model_info = MODEL_CONFIGS[model_name]
     target_path = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "BiRefNet", model_name)
-    correct_path = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "BiRefNet")
-    if not os.path.exists(correct_path):
-        os.makedirs(correct_path, exist_ok=True)
-    if not os.path.exists(target_path):
-        # Print message indicating that the model is being downloaded
-        print(f"🖌️ ComfyUI-NeuralMedia downloading ({model_name})")
-        # Run git clone silently (suppress output)
-        subprocess.run(
-            ["git", "clone", repo_url, target_path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True
-        )
-        # Only show this message if the model has been downloaded (git clone performed)
-        print(f"🖌️ ComfyUI-NeuralMedia ({model_name}) has been downloaded in {target_path}")
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
 
-# Convert tensor to PIL image
-def tensor2pil(image):
-    return Image.fromarray((image.cpu().numpy().squeeze() * 255).astype(np.uint8))
+    if not os.path.exists(os.path.join(target_path, ".git")):
+        print(f"🖌️ Downloading model '{model_name}'...")
+        subprocess.run(["git", "clone", model_info["repo_url"], target_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"🖌️ Model '{model_name}' downloaded successfully.")
+    elif update_model:
+        print(f"🖌️ Updating model '{model_name}'...")
+        subprocess.run(["git", "-C", target_path, "pull"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"🖌️ Model '{model_name}' updated successfully.")
 
-# Convert PIL image to tensor
-def pil2tensor(image):
-    return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
+def convert_tensor_to_pil(image_tensor):
+    """Convert a PyTorch tensor to a PIL image."""
+    return Image.fromarray((image_tensor.cpu().numpy().squeeze() * 255).astype(np.uint8))
 
-# Resize the image based on the model
-def resize_image(image, model_name):
-    size_map = {
-        "BiRefNet": (1024, 1024),
-        "BiRefNet_lite": (1024, 1024),
-        "BiRefNet_lite-2K": (1440, 2560),
-    }
-    
-    size = size_map.get(model_name)
-    if not size:
-        raise ValueError("Unrecognized model.")
-    
-    return image.convert('RGB').resize(size, Image.BILINEAR)
+def convert_pil_to_tensor(image_pil):
+    """Convert a PIL image to a PyTorch tensor."""
+    return torch.from_numpy(np.array(image_pil).astype(np.float32) / 255.0).unsqueeze(0)
 
 class BiRefNetNode:
     @classmethod
@@ -86,12 +59,14 @@ class BiRefNetNode:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "BiRefNet_model": (["--select model--", "BiRefNet", "BiRefNet_lite", "BiRefNet_lite-2K"], {"default": "--select model--"}),  
-                "background_color": (["transparency", "green", "white", "red", "yellow", "blue", "black", "pink", "purple", "brown", "violet",
-                                      "wheat", "whitesmoke", "yellowgreen", "turquoise", "tomato", "thistle", "teal", "tan", "steelblue",
-                                      "springgreen", "snow", "slategrey", "slateblue", "skyblue", "orange"],
-                                      {"default": "transparency"}),  
-                "device": (["auto", "cuda", "cpu"], {"default": "auto"})  
+                "BiRefNet_model": (["BiRefNet", "BiRefNet_lite", "BiRefNet_lite-2K", "RMBG 2.0 (no commercial use)"], {"default": "BiRefNet"}),
+                "background_color": ([
+                    "transparency", "green", "white", "red", "yellow", "blue", "black", "pink", "purple", "brown", 
+                    "violet", "wheat", "whitesmoke", "yellowgreen", "turquoise", "tomato", "thistle", "teal", 
+                    "tan", "steelblue", "springgreen", "snow", "slategrey", "slateblue", "skyblue", "orange"
+                ], {"default": "transparency"}),
+                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
+                "update_model": ("BOOLEAN", {"default": False, "label_on": "Yes", "label_off": "No"})
             }
         }
 
@@ -100,49 +75,65 @@ class BiRefNetNode:
     FUNCTION = "background_remove"
     CATEGORY = "ComfyUI-NeuralMedia/BiRefNet"
   
-    def background_remove(self, image, BiRefNet_model, device, background_color):
-        if BiRefNet_model == "select model":
-            raise ValueError("Please select a valid model.")
+    def background_remove(self, image, BiRefNet_model, device, background_color, update_model):
+        # Map user-friendly names to model identifiers
+        model_map = {
+            "RMBG 2.0 (no commercial use)": "RMBG_2.0",
+            "BiRefNet": "BiRefNet",
+            "BiRefNet_lite": "BiRefNet_lite",
+            "BiRefNet_lite-2K": "BiRefNet_lite-2K"
+        }
+        model_name = model_map[BiRefNet_model]
 
-        # Clone the model repository if necessary
-        clone_model_repo(BiRefNet_model)
+        # Handle model file management
+        manage_model_files(model_name, update_model)
 
-        # Load the selected model
-        model_path = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "BiRefNet", BiRefNet_model)
-        birefnet = AutoModelForImageSegmentation.from_pretrained(model_path, trust_remote_code=True)
-        device = get_device_by_name(device)
+        # Load the model and move it to the specified device
+        model_path = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "BiRefNet", model_name)
+        model = AutoModelForImageSegmentation.from_pretrained(model_path, trust_remote_code=True, revision="main")
         
-        # Print that the model has been loaded on the selected device
-        print(f"🖌️ ComfyUI-NeuralMedia ({BiRefNet_model}) has been loaded on {device}")
-        birefnet.to(device)
+        device = select_device(device)
+        model.to(device)
+        
+        # Only use half-precision for compatible models on CUDA
+        if device == "cuda" and torch.cuda.is_available() and model_name != "RMBG_2.0":
+            model.half()
+        
+        print(f"🖌️ Model '{model_name}' loaded on {device}.")
 
-        # Transformations and image processing
         processed_images, processed_masks = [], []
-        transform_image = get_transform_image(BiRefNet_model)
+        transform = get_transform(model_name)
         
         for img in image:
-            orig_image = tensor2pil(img)
-            w, h = orig_image.size
-            im_tensor = transform_image(resize_image(orig_image, BiRefNet_model)).unsqueeze(0).to(device)
+            # Apply transformations and resize to fit model input requirements
+            original_img = convert_tensor_to_pil(img)
+            w, h = original_img.size
+            transformed_tensor = transform(original_img.resize(MODEL_CONFIGS[model_name]["resize_dims"])).unsqueeze(0).to(device)
+            if device == "cuda" and model_name != "RMBG_2.0":
+                transformed_tensor = transformed_tensor.half()
 
+            # Run the model without gradient tracking
             with torch.no_grad():
-                result = birefnet(im_tensor)[-1].sigmoid().cpu()
+                result = model(transformed_tensor)[-1].sigmoid().cpu()
+                result = (result - result.min()) / (result.max() - result.min())  # Normalize result
 
-            result = torch.squeeze(F.interpolate(result, size=(h, w)))
-            result = (result - result.min()) / (result.max() - result.min())
-            
-            # Convert result to PIL image
-            pil_im = Image.fromarray((result * 255).numpy().astype(np.uint8).squeeze())
+            mask_img = Image.fromarray((result.squeeze() * 255).numpy().astype(np.uint8))
 
-            # Create background image according to selected background color
+            # Ensure mask dimensions match the original image
+            if mask_img.size != original_img.size:
+                mask_img = mask_img.resize(original_img.size, Image.BILINEAR)
+
+            # Create background and paste the original image using the mask
             mode = "RGBA" if background_color == 'transparency' else "RGB"
             color = (0, 0, 0, 0) if background_color == 'transparency' else background_color
-            new_im = Image.new(mode, pil_im.size, color)
-            new_im.paste(orig_image, mask=pil_im)
+            background_img = Image.new(mode, mask_img.size, color)
+            background_img.paste(original_img, mask=mask_img)
 
-            processed_images.append(pil2tensor(new_im))
-            processed_masks.append(pil2tensor(pil_im))
+            # Convert processed images back to tensors
+            processed_images.append(convert_pil_to_tensor(background_img))
+            processed_masks.append(convert_pil_to_tensor(mask_img))
 
+        # Return concatenated results
         return torch.cat(processed_images), torch.cat(processed_masks)
 
 NODE_CLASS_MAPPINGS = {
