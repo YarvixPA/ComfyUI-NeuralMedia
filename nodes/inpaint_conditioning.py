@@ -18,6 +18,7 @@ class InpaintConditioningNode:
                              "vae": ("VAE", ),
                              "pixels": ("IMAGE", ),
                              "mask": ("MASK", ),
+                             "noise_mask": ("BOOLEAN", {"default": True, "tooltip": "Add a noise mask to the latent so sampling will only happen within the mask. Might improve results or completely break things depending on the model."})
                              }}
 
     RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT")
@@ -26,7 +27,7 @@ class InpaintConditioningNode:
 
     CATEGORY = "ComfyUI-NeuralMedia/Inpaint and Outpaint"
 
-    def encode(self, positive, negative, pixels, vae, mask):
+    def encode(self, positive, negative, pixels, vae, mask, noise_mask):
         x = (pixels.shape[1] // 8) * 8
         y = (pixels.shape[2] // 8) * 8
         mask = F.interpolate(mask.reshape((-1, 1, mask.shape[-2], mask.shape[-1])), size=(pixels.shape[1], pixels.shape[2]), mode="bilinear")
@@ -50,7 +51,8 @@ class InpaintConditioningNode:
 
         out_latent = {}
         out_latent["samples"] = orig_latent
-        out_latent["noise_mask"] = mask
+        if noise_mask:
+            out_latent["noise_mask"] = mask
 
         out = []
         for conditioning in [positive, negative]:
