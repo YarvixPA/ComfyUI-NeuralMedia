@@ -25,7 +25,7 @@ class InpaintConditioningNode:
     RETURN_NAMES = ("positive", "negative", "latent")
     FUNCTION = "encode"
 
-    CATEGORY = "ComfyUI-NeuralMedia/Inpaint and Outpaint"
+    CATEGORY = "ComfyUI-NeuralMedia"
 
     def encode(self, positive, negative, pixels, vae, mask, noise_mask):
         x = (pixels.shape[1] // 8) * 8

@@ -1,45 +1,47 @@
 import comfy.clip_vision
 import comfy.sd
-import folder_paths
 import torch
 
-class CLIPVisionStyleApply:
+class CLIPVisionAndStyleApply:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "clip_model": (folder_paths.get_filename_list("clip_vision"), {"tooltip": "Name of the CLIP Vision model to load."}),
-                "style_model": (folder_paths.get_filename_list("style_models"), {"tooltip": "The style model to load and apply."}),
-                "conditioning": ("CONDITIONING", {"tooltip": "Existing conditioning to enhance with the style model."}),
-                "image": ("IMAGE", {"tooltip": "The image to encode using the CLIP Vision model."}),
-                "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.001, "tooltip": "Influence of the style model on the conditioning."}),
+                "conditioning": ("CONDITIONING", {"tooltip": "The existing conditioning to be modified."}),
+                "clip_vision": ("CLIP_VISION", {"tooltip": "The CLIP Vision model provided by another node."}),
+                "style_model": ("STYLE_MODEL", {"tooltip": "The style model provided by another node."}),
+                "image": ("IMAGE", {"tooltip": "The image to be encoded by the CLIP Vision model."}),
+                "crop": (["center", "none"], {"tooltip": "Whether to crop the image to its center."}),
+                "strength_type": (["multiply"], {"tooltip": "The method to apply strength to the style model."}),
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "The influence of the style model on the conditioning."}),
             }
         }
 
     RETURN_TYPES = ("CONDITIONING",)
-    FUNCTION = "load_and_apply"
+    FUNCTION = "apply"
     CATEGORY = "ComfyUI-NeuralMedia"
-    DESCRIPTION = "Loads a CLIP Vision model and a style model, encodes an image, and applies the style model to the conditioning."
+    DESCRIPTION = "Applies a CLIP Vision model and a style model to modify conditioning."
 
-    def load_and_apply(self, clip_model, style_model, conditioning, image, strength=1.0):
-        # Load and encode with CLIP Vision model
-        clip_path = folder_paths.get_full_path_or_raise("clip_vision", clip_model)
-        clip_vision_output = comfy.clip_vision.load(clip_path).encode_image(image)
+    def apply(self, conditioning, clip_vision, style_model, image, crop="center", strength_type="multiply", strength=1.0):
+        crop_image = crop == "center"
 
-        # Load style model
-        style_model_path = folder_paths.get_full_path_or_raise("style_models", style_model)
-        style_model_instance = comfy.sd.load_style_model(style_model_path)
+        clip_encoded = clip_vision.encode_image(image, crop=crop_image)
 
-        # Apply style model to conditioning
-        style_conditioning = (strength * style_model_instance.get_cond(clip_vision_output)
-                              .flatten(start_dim=0, end_dim=1).unsqueeze(dim=0))
-        return ([torch.cat((t[0], style_conditioning), dim=1), t[1].copy()] for t in conditioning),
+        style_conditioning = style_model.get_cond(clip_encoded).flatten(start_dim=0, end_dim=1).unsqueeze(dim=0)
+        if strength_type == "multiply":
+            style_conditioning *= strength
 
-# Mappings for the node
+        updated_conditioning = []
+        for cond in conditioning:
+            combined_cond = torch.cat((cond[0], style_conditioning), dim=1)
+            updated_conditioning.append([combined_cond, cond[1].copy()])
+
+        return (updated_conditioning,)
+
 NODE_CLASS_MAPPINGS = {
-    "CLIPVisionStyleApply": CLIPVisionStyleApply
+    "CLIPVisionAndStyleApply": CLIPVisionAndStyleApply
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "CLIPVisionStyleApply": "🖌️ CLIP Vision and Style model Apply"
+    "CLIPVisionAndStyleApply": "🖌️ CLIP Vision & Style Apply"
 }

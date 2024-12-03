@@ -67,7 +67,7 @@ class RemoveBackgroundNode:
     RETURN_TYPES = ("IMAGE", "MASK",)
     RETURN_NAMES = ("image", "mask",)
     FUNCTION = "background_remove"
-    CATEGORY = "ComfyUI-NeuralMedia/RemoveBackground"
+    CATEGORY = "ComfyUI-NeuralMedia"
 
     def background_remove(self, image, RemoveBackground_model, device, background_color, update_model):
         model_map = {
