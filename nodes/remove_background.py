@@ -1,25 +1,25 @@
 import os
-import subprocess
-from transformers import AutoModelForImageSegmentation
+from transformers import AutoModelForImageSegmentation, AutoConfig
+from huggingface_hub import hf_hub_download
 import torch
+from safetensors.torch import load_file as safetensors_load_file
 from torchvision import transforms
 import numpy as np
 from PIL import Image
-import torch.nn.functional as F
 
-torch.set_float32_matmul_precision("high")  # Set high precision for matrix multiplications
+# Optimize precision for matrix multiplications
+torch.set_float32_matmul_precision("high")
 
 MODEL_CONFIGS = {
-    "BiRefNet": {"resize_dims": (1024, 1024), "repo_url": "https://huggingface.co/ZhengPeng7/BiRefNet"},
-    "BiRefNet_lite": {"resize_dims": (1024, 1024), "repo_url": "https://huggingface.co/ZhengPeng7/BiRefNet_lite"},
-    "BiRefNet_lite-2K": {"resize_dims": (1440, 2560), "repo_url": "https://huggingface.co/ZhengPeng7/BiRefNet_lite-2K"},
-    "RMBG_2.0": {"resize_dims": (1024, 1024), "repo_url": "https://huggingface.co/briaai/RMBG-2.0"}
+    "BiRefNet": {"resize_dims": (1024, 1024), "repo_id": "ZhengPeng7/BiRefNet"},
+    "BiRefNet_lite": {"resize_dims": (1024, 1024), "repo_id": "ZhengPeng7/BiRefNet_lite"},
+    "BiRefNet_lite-2K": {"resize_dims": (1440, 2560), "repo_id": "ZhengPeng7/BiRefNet_lite-2K"},
+    "RMBG 2.0": {"resize_dims": (1024, 1024), "repo_id": "briaai/RMBG-2.0"}
 }
 
-def get_transform(model_name):
-    dims = MODEL_CONFIGS[model_name]["resize_dims"]
+def get_transform(resize_dims):
     return transforms.Compose([
-        transforms.Resize(dims),
+        transforms.Resize(resize_dims),
         transforms.ToTensor(),
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
     ])
@@ -27,22 +27,37 @@ def get_transform(model_name):
 def select_device(device):
     return "cuda" if device == 'auto' and torch.cuda.is_available() else device
 
-def manage_model_files(model_name, update_model):
-    model_info = MODEL_CONFIGS[model_name]
-    target_path = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "RemoveBackground", model_name)
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+def initialize_model(repo_id, model_name, resize_dims, update_model):
+    target_dir = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "RemoveBackground", model_name)
+    os.makedirs(target_dir, exist_ok=True)
 
-    if not os.path.exists(os.path.join(target_path, ".git")):
-        print(f"🖌️ Remove Background: Downloading model '{model_name}'...")
-        subprocess.run(["git", "clone", model_info["repo_url"], target_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"🖌️ Remove Background: Model '{model_name}' downloaded successfully.")
+    # Files to check/download
+    files_to_download = ["model.safetensors", "config.json", "BiRefNet_config.py", "birefnet.py"]
+    model_found = True
+
+    for file_name in files_to_download:
+        file_path = os.path.join(target_dir, file_name)
+        if not os.path.exists(file_path):
+            model_found = False
+            hf_hub_download(repo_id=repo_id, filename=file_name, local_dir=target_dir)
+
+    if model_found:
+        print(f"🖌️ Remove Background: {model_name} detected.")
     elif update_model:
-        print(f"🖌️ Remove Background: Updating model '{model_name}'...")
-        subprocess.run(["git", "-C", target_path, "pull"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"🖌️ Remove Background: Model '{model_name}' updated successfully.")
+        print(f"🖌️ Remove Background: Model '{model_name}' updated.")
+    else:
+        print(f"🖌️ Remove Background: Model '{model_name}' downloaded.")
+
+    # Load model and state_dict
+    model_file = os.path.join(target_dir, "model.safetensors")
+    config = AutoConfig.from_pretrained(target_dir, trust_remote_code=True)
+    model = AutoModelForImageSegmentation.from_config(config, trust_remote_code=True)
+    model.load_state_dict(safetensors_load_file(model_file, device="cpu"))
+
+    return model
 
 def convert_tensor_to_pil(image_tensor):
-    return Image.fromarray((image_tensor.cpu().numpy().squeeze() * 255).astype(np.uint8))
+    return Image.fromarray((image_tensor.squeeze().cpu().numpy() * 255).astype(np.uint8))
 
 def convert_pil_to_tensor(image_pil):
     return torch.from_numpy(np.array(image_pil).astype(np.float32) / 255.0).unsqueeze(0)
@@ -53,7 +68,7 @@ class RemoveBackgroundNode:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "RemoveBackground_model": (["BiRefNet", "BiRefNet_lite", "BiRefNet_lite-2K", "RMBG 2.0 (no commercial use)"], {"default": "BiRefNet"}),
+                "RemoveBackground_model": (["BiRefNet", "BiRefNet_lite", "BiRefNet_lite-2K", "RMBG 2.0 (NO COMMERCIAL USE)"], {"default": "BiRefNet"}),
                 "background_color": ([
                     "transparency", "green", "white", "red", "yellow", "blue", "black", "pink", "purple", "brown", 
                     "violet", "wheat", "whitesmoke", "yellowgreen", "turquoise", "tomato", "thistle", "teal", 
@@ -70,35 +85,33 @@ class RemoveBackgroundNode:
     CATEGORY = "ComfyUI-NeuralMedia"
 
     def background_remove(self, image, RemoveBackground_model, device, background_color, update_model):
+        # Map input to internal configuration
         model_map = {
-            "RMBG 2.0 (no commercial use)": "RMBG_2.0",
+            "RMBG 2.0 (NO COMMERCIAL USE)": "RMBG 2.0",
             "BiRefNet": "BiRefNet",
             "BiRefNet_lite": "BiRefNet_lite",
-            "BiRefNet_lite-2K": "BiRefNet_lite-2K"
+            "BiRefNet_lite-2K": "BiRefNet_lite-2K",
         }
         model_name = model_map[RemoveBackground_model]
+        model_config = MODEL_CONFIGS[model_name]
 
-        manage_model_files(model_name, update_model)
+        model = initialize_model(model_config["repo_id"], model_name, model_config["resize_dims"], update_model)
 
-        model_path = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "RemoveBackground", model_name)
-        model = AutoModelForImageSegmentation.from_pretrained(model_path, trust_remote_code=True, revision="main")
-        
         device = select_device(device)
-        model.to(device)
-        
-        if device == "cuda" and torch.cuda.is_available() and model_name != "RMBG_2.0":
+        model.to(device).eval()
+
+        if device == "cuda" and torch.cuda.is_available() and model_name != "RMBG 2.0":
             model.half()
-        
+
         print(f"🖌️ Remove Background: Model '{model_name}' loaded on {device}.")
 
         processed_images, processed_masks = [], []
-        transform = get_transform(model_name)
-        
+        transform = get_transform(model_config["resize_dims"])
+
         for img in image:
             original_img = convert_tensor_to_pil(img)
-            w, h = original_img.size
-            transformed_tensor = transform(original_img.resize(MODEL_CONFIGS[model_name]["resize_dims"])).unsqueeze(0).to(device)
-            if device == "cuda" and model_name != "RMBG_2.0":
+            transformed_tensor = transform(original_img.resize(model_config["resize_dims"])).unsqueeze(0).to(device)
+            if device == "cuda" and model_name != "RMBG 2.0":
                 transformed_tensor = transformed_tensor.half()
 
             with torch.no_grad():
