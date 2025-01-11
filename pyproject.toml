@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-neuralmedia"
+description = "A set of custom nodes modified to achieve things I felt were missing."
+version = "1.0.0"
+license = {file = "LICENSE"}
+dependencies = ["opencv-python", "numpy", "Pillow", "svgwrite", "reportlab", "svglib", "vtracer", "timm"]
+
+[project.urls]
+Repository = "https://github.com/YarvixPA/ComfyUI-NeuralMedia"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "ComfyUI-NeuralMedia"
+Icon = ""
