@@ -2,13 +2,12 @@ from __future__ import annotations
 import os
 import json
 import numpy as np
-import torch
-from PIL import Image
-from PIL.PngImagePlugin import PngInfo
+from PIL import Image, PngImagePlugin
 
 import folder_paths
 from comfy.cli_args import args
 from comfy.comfy_types import IO, ComfyNodeABC, InputTypeDict
+
 
 class SaveImageNode:
     def __init__(self):
@@ -23,10 +22,10 @@ class SaveImageNode:
             "required": {
                 "images": (IO.IMAGE, {"tooltip": "The images to save."}),
                 "filename_prefix": (IO.STRING, {"default": "ComfyUI", "tooltip": "The prefix for the file to save. This may include formatting information such as %date:yyyy-MM-dd% or %Empty Latent Image.width% to include values from nodes."}),
-                "file_format": (["PNG", "JPG", "webP"], {"default": "PNG", "tooltip": "The format to save the image."})
+                "file_format": (["PNG", "JPG", "WebP"], {"default": "PNG", "tooltip": "The format to save the image."})
             },
             "hidden": {
-                "prompt": "PROMPT", 
+                "prompt": "PROMPT",
                 "extra_pnginfo": "EXTRA_PNGINFO"
             },
         }
@@ -42,42 +41,55 @@ class SaveImageNode:
         full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(
             filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0]
         )
-        results = list()
+        results = []
 
-        file_format = file_format.lower()
-        if file_format not in ["png", "jpg", "webp"]:
-            raise ValueError("Unsupported format. Please choose from PNG, JPG, or webP.")
+        # Validate file format
+        file_format_lower = file_format.lower()
+        valid_formats = {"png", "jpg", "webp"}
+        if file_format_lower not in valid_formats:
+            raise ValueError(f"Unsupported format. Please choose from {', '.join(valid_formats)}.")
 
-        for (batch_number, image) in enumerate(images):
-            img_array = 255. * image.cpu().numpy()
-            img = Image.fromarray(np.clip(img_array, 0, 255).astype(np.uint8))
+        for batch_number, image in enumerate(images):
+            img_array = np.clip((255. * image.cpu().numpy()), 0, 255).astype(np.uint8)
+            mode = "RGBA" if img_array.shape[-1] == 4 else "RGB"
 
+            # Adjust format if necessary
+            if mode == "RGBA" and file_format_lower == "jpg":
+                file_format_lower = "png"
+
+            # Create PIL image
+            img = Image.fromarray(img_array, mode=mode)
+
+            # Add metadata for PNG
             metadata = None
-            if not args.disable_metadata and file_format == "png":
-                metadata = PngInfo()
-                if prompt is not None:
+            if not args.disable_metadata and file_format_lower == "png":
+                metadata = PngImagePlugin.PngInfo()
+                if prompt:
                     metadata.add_text("prompt", json.dumps(prompt))
-                if extra_pnginfo is not None:
-                    for key in extra_pnginfo:
-                        metadata.add_text(key, json.dumps(extra_pnginfo[key]))
+                if extra_pnginfo:
+                    for key, value in extra_pnginfo.items():
+                        metadata.add_text(key, json.dumps(value))
 
+            # Prepare file path and name
             filename_with_batch_num = filename.replace("%batch_num%", str(batch_number))
-            file = f"{filename_with_batch_num}_{counter:05}_.{file_format}"
+            file = f"{filename_with_batch_num}_{counter:05}_.{file_format_lower}"
             file_path = os.path.join(full_output_folder, file)
 
-            if file_format == "png":
-                img.save(file_path, pnginfo=metadata, compress_level=self.compress_level)
-            else:
-                img.save(file_path, format=file_format.upper())
+            # Save image
+            save_kwargs = {"pnginfo": metadata, "compress_level": self.compress_level} if file_format_lower == "png" else {}
+            img.save(file_path, format=file_format_lower.upper(), **save_kwargs)
 
             results.append({
                 "filename": file,
                 "subfolder": subfolder,
-                "type": self.type
+                "type": self.type,
+                "original_format": file_format,
+                "final_format": file_format_lower
             })
             counter += 1
 
         return {"ui": {"images": results}}
+
 
 NODE_CLASS_MAPPINGS = {
     "SaveImageNode": SaveImageNode
