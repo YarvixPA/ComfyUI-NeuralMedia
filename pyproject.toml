@@ -1,5 +1,5 @@
 [project]
-name = "ComfyUI-NeuralMedia"
+name = "comfyui-neuralmedia"
 description = "A set of custom nodes modified to achieve things I felt were missing."
 version = "0.0.1"
 # license = { file = "LICENSE" }
