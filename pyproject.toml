@@ -9,5 +9,5 @@ Repository = "https://github.com/YarvixPA/ComfyUI-NeuralMedia"
 
 [tool.comfy]
 PublisherId = "yarvixpa"
-DisplayName = "ComfyUI-NeuralMedia"
+DisplayName = "YarvixPA"
 Icon = ""
