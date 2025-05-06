@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-NeuralMedia"
 description = "A set of custom nodes modified to achieve things I felt were missing."
-version = "1.0.0"
+version = "0.0.1"
 license = { file = "LICENSE" }
 
 [project.urls]
