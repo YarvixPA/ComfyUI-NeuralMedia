@@ -1,6 +1,6 @@
 [project]
 name = "ComfyUI-NeuralMedia"
-description = "A set of nodes that allow data to be 'broadcast' to some or all unconnected inputs. Greatly reduces link spaghetti."
+description = "A set of custom nodes modified to achieve things I felt were missing."
 version = "1.0.0"
 license = { file = "LICENSE" }
 
