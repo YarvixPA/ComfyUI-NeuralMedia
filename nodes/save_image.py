@@ -9,7 +9,7 @@ from comfy.cli_args import args
 from comfy.comfy_types import IO, ComfyNodeABC, InputTypeDict
 
 
-class SaveImageNode:
+class SaveImageAdvance:
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
         self.type = "output"
@@ -92,9 +92,9 @@ class SaveImageNode:
 
 
 NODE_CLASS_MAPPINGS = {
-    "SaveImageNode": SaveImageNode
+    "SaveImageAdvance": SaveImageAdvance
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "SaveImageNode": "🖌️ Save Image"
+    "SaveImageAdvance": "🖌️ Save Image"
 }
