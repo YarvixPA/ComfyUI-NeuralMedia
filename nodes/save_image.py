@@ -33,7 +33,7 @@ class SaveImageAdvance:
     RETURN_TYPES = ()
     FUNCTION = "save_images"
     OUTPUT_NODE = True
-    CATEGORY = "ComfyUI-NeuralMedia"
+    CATEGORY = "ComfyUI-NeuralMedia/Image"
     DESCRIPTION = "Saves the input images to your ComfyUI output directory."
 
     def save_images(self, images, filename_prefix="ComfyUI", file_format="PNG", prompt=None, extra_pnginfo=None):
