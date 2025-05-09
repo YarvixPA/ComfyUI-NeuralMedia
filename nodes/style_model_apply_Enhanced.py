@@ -3,7 +3,7 @@ import torch
 from comfy.model_management import throw_exception_if_processing_interrupted
 from comfy.comfy_types import IO, ComfyNodeABC, InputTypeDict
 
-class StyleModelApplyEnhanced(ComfyNodeABC):
+class ApplyStyleModelEnhanced(ComfyNodeABC):
     @classmethod
     def INPUT_TYPES(s) -> InputTypeDict:
         return {
@@ -76,9 +76,9 @@ class StyleModelApplyEnhanced(ComfyNodeABC):
         return (updated_conditioning,)
 
 NODE_CLASS_MAPPINGS = {
-    "StyleModelApplyEnhanced": StyleModelApplyEnhanced
+    "ApplyStyleModelEnhanced": ApplyStyleModelEnhanced
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "StyleModelApplyEnhanced": "🖌️ Style Model Apply (Enhanced)"
+    "ApplyStyleModelEnhanced": "🖌️ Apply Style Model (Enhanced)"
 }
