@@ -6,22 +6,22 @@ class FrameCalculator:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "fps": ("INT", {"default": 30}),
-                "duration_seconds": ("INT", {"default": 0}),
+                "fps": ("FLOAT", {"default": 30.0}),
+                "duration_seconds": ("INT",   {"default": 0}),
             }
         }
 
-    RETURN_TYPES = ("INT", "INT")
+    RETURN_TYPES = ("FLOAT", "INT")
     RETURN_NAMES = ("frame_rate", "num_frames")
     FUNCTION = "execute"
     CATEGORY = "ComfyUI-NeuralMedia/Utils/Video"
 
-    def execute(self, fps=30, duration_seconds=0):
-        fps = int(fps)
+    def execute(self, fps=30.0, duration_seconds=0):
+        fps = float(fps)
         duration_seconds = int(duration_seconds)
 
         frame_rate = fps
-        num_frames = fps * duration_seconds
+        num_frames = int(round(frame_rate * duration_seconds))
         return (frame_rate, num_frames)
 
 
