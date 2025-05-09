@@ -3,7 +3,7 @@ import torch
 from comfy.model_management import throw_exception_if_processing_interrupted
 from comfy.comfy_types import IO, ComfyNodeABC, InputTypeDict
 
-class StyleModelApplySimple(ComfyNodeABC):
+class ApplyStyleModelSimple(ComfyNodeABC):
     @classmethod
     def INPUT_TYPES(s) -> InputTypeDict:
         return {
@@ -61,9 +61,9 @@ class StyleModelApplySimple(ComfyNodeABC):
         return (modified_conditioning,)
 
 NODE_CLASS_MAPPINGS = {
-    "StyleModelApplySimple": StyleModelApplySimple
+    "ApplyStyleModelSimple": ApplyStyleModelSimple
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "StyleModelApplySimple": "🖌️ Style Model Apply (Simple)"
+    "ApplyStyleModelSimple": "🖌️ Apply Style Model (Simple)"
 }
