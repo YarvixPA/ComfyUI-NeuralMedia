@@ -29,7 +29,7 @@ class ApplyStyleModelEnhanced(ComfyNodeABC):
 
     RETURN_TYPES = ("CONDITIONING",)
     FUNCTION = "process"
-    CATEGORY = "ComfyUI-NeuralMedia/Style Model"
+    CATEGORY = "ComfyUI-NeuralMedia/Flux/Redux"
     DESCRIPTION = "Encodes images with CLIP Vision and applies a style model to modify conditioning for multiple inputs."
 
     def process(self, conditioning, clip_vision, style_model, crop="center", strength_type="multiply", 
