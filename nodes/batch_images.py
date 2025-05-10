@@ -8,6 +8,8 @@ class BatchImagesNode:
         return {
             "required": {
                 "image1": ("IMAGE",),
+            },
+            "optional": {
                 "image2": ("IMAGE",),
                 "image3": ("IMAGE",),
             }
@@ -17,13 +19,11 @@ class BatchImagesNode:
     FUNCTION = "batch"
     CATEGORY = "ComfyUI-NeuralMedia/Image"
 
-    def batch(self, image1, image2, image3):
-        # Asegurarnos de que todas las imágenes tengan las mismas dimensiones
+    def batch(self, image1, image2=None, image3=None):
         target_h, target_w = image1.shape[1], image1.shape[2]
 
         def resize_if_needed(img):
             if img.shape[1:] != (target_h, target_w):
-                # Upscale al tamaño de image1
                 img = comfy.utils.common_upscale(
                     img.movedim(-1, 1),
                     target_w, target_h,
@@ -31,11 +31,13 @@ class BatchImagesNode:
                 ).movedim(1, -1)
             return img
 
-        img2 = resize_if_needed(image2)
-        img3 = resize_if_needed(image3)
+        images = [image1]
+        if image2 is not None:
+            images.append(resize_if_needed(image2))
+        if image3 is not None:
+            images.append(resize_if_needed(image3))
 
-        # Concatenar los tres batches de imágenes
-        out = torch.cat((image1, img2, img3), dim=0)
+        out = torch.cat(images, dim=0)
         return (out,)
 
 NODE_CLASS_MAPPINGS = {
