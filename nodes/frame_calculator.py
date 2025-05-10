@@ -24,7 +24,6 @@ class FrameCalculator:
         num_frames = int(round(frame_rate * duration_seconds))
         return (frame_rate, num_frames)
 
-
 NODE_CLASS_MAPPINGS = {
     "FrameCalculator": FrameCalculator
 }
