@@ -19,7 +19,7 @@ class TileCheckpointPatchNode:
 
     RETURN_TYPES = ("MODEL", "VAE")  # Removed CLIP from the outputs
     FUNCTION = "tile_checkpoint_patch"
-    CATEGORY = "ComfyUI-NeuralMedia/model/checkpoint/patches"
+    CATEGORY = "ComfyUI-NeuralMedia/Model/Checkpoint"
 
     def tile_checkpoint_patch(self, model, vae, tiling, copy_option):
         # Duplicate or modify in place
