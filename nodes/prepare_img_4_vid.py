@@ -18,7 +18,7 @@ class Prepimg2Vid:
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("IMAGE", "width", "height")
     FUNCTION = "execute"
-    CATEGORY = "ComfyUI-NeuralMedia/Utils"
+    CATEGORY = "ComfyUI-NeuralMedia/Utils/Video"
 
     _H_MAP = {
         "480p (SD)":       480,
