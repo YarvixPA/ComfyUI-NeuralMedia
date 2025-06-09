@@ -4,14 +4,14 @@ import torch
 
 class Prepimg2Vid:
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
-                "image":              ("IMAGE",),
-                "resolution":         (["480p (SD)", "720p (HD)", "1080p (Full HD)", "1440p (Quad HD)", "2160p (4K)"], { "default": "720p (HD)" }),
-                "aspect_ratio":       (["16:9 (Horizontal)", "3:2 (Horizontal)", "1:1 (Square)", "2:3 (Vertical)", "9:16 (Vertical)"], { "default": "16:9 (Horizontal)" }),
-                "horizontal_offset":  ("INT", { "default": 0, "min": -MAX_RESOLUTION, "max": MAX_RESOLUTION, "step": 1 }),
-                "vertical_offset":    ("INT", { "default": 0, "min": -MAX_RESOLUTION, "max": MAX_RESOLUTION, "step": 1 }),
+                "image":             ("IMAGE",),
+                "resolution":        (["480p (SD)", "720p (HD)", "1080p (Full HD)", "1440p (Quad HD)", "2160p (4K)"], {"default": "720p (HD)"}),
+                "aspect_ratio":      (["16:9 (Horizontal)", "3:2 (Horizontal)", "1:1 (Square)", "2:3 (Vertical)", "9:16 (Vertical)"], {"default": "16:9 (Horizontal)"}),
+                "horizontal_offset": ("INT", {"default": 0, "min": -MAX_RESOLUTION, "max": MAX_RESOLUTION, "step": 1}),
+                "vertical_offset":   ("INT", {"default": 0, "min": -MAX_RESOLUTION, "max": MAX_RESOLUTION, "step": 1}),
             }
         }
 
@@ -37,43 +37,50 @@ class Prepimg2Vid:
     }
 
     def execute(self, image, resolution, aspect_ratio, horizontal_offset, vertical_offset):
-        # 1) Upscale input to a base height of 1080 for consistent cropping
+        # Convert to CHW for processing
+        tensor = image.permute(0, 3, 1, 2)
+        _, _, orig_h, orig_w = tensor.shape
+
+        # Upscale to base height for consistent cropping
         base_h = 1080
-        _, oh, ow, _ = image.shape
-        base_w = round(ow * (base_h / oh))
+        base_w = int(orig_w * (base_h / orig_h))
+        upscaled = comfy.utils.lanczos(tensor, base_w, base_h)
 
-        t = image.permute(0, 3, 1, 2)
-        t = comfy.utils.lanczos(t, base_w, base_h)
-        img = t.permute(0, 2, 3, 1)
-
-        # 2) Determine crop region for desired aspect ratio
+        # Determine crop region for desired AR
         ar_w, ar_h = self._AR_MAP[aspect_ratio]
-        ratio = ar_w / ar_h
+        target_ratio = ar_w / ar_h
 
-        region_h = base_h
-        region_w = round(region_h * ratio)
-        if region_w > base_w:
-            region_w = base_w
-            region_h = round(region_w / ratio)
+        # Compute maximal crop dimensions that fit
+        crop_h = base_h
+        crop_w = int(crop_h * target_ratio)
+        if crop_w > base_w:
+            crop_w = base_w
+            crop_h = int(crop_w / target_ratio)
 
-        # 3) Center + apply offsets (clamped)
-        cx = (base_w - region_w) // 2
-        cy = (base_h - region_h) // 2
-        x0 = max(0, min(cx + horizontal_offset, base_w - region_w))
-        y0 = max(0, min(cy + vertical_offset, base_h - region_h))
+        # Center and apply offsets (clamped within bounds)
+        cen_x = (base_w - crop_w) // 2
+        cen_y = (base_h - crop_h) // 2
+        x0 = min(max(cen_x + horizontal_offset, 0), base_w - crop_w)
+        y0 = min(max(cen_y + vertical_offset, 0), base_h - crop_h)
 
-        # 4) Crop strictly inside the frame
-        cropped = img[:, y0 : y0 + region_h, x0 : x0 + region_w, :]
+        # Crop and convert back to HWC
+        cropped = upscaled[:, :, y0:y0 + crop_h, x0:x0 + crop_w]
+        cropped = cropped.permute(0, 2, 3, 1)
 
-        # 5) Final resize to target resolution height & aspect ratio
+        # Final resize to target resolution
         out_h = self._H_MAP[resolution]
-        out_w = round(out_h * ratio)
+        out_w = int(out_h * target_ratio)
+        # Ensure even dimensions
+        out_w -= out_w % 2
+        out_h -= out_h % 2
 
-        t2 = cropped.permute(0, 3, 1, 2)
-        t2 = comfy.utils.lanczos(t2, out_w, out_h)
-        out = t2.permute(0, 2, 3, 1)
+        # Resize
+        final_tensor = cropped.permute(0, 3, 1, 2)
+        resized = comfy.utils.lanczos(final_tensor, out_w, out_h)
+        output = resized.permute(0, 2, 3, 1)
 
-        return (torch.clamp(out, 0.0, 1.0), out_w, out_h)
+        # Clamp and return exact dimensions
+        return (torch.clamp(output, 0.0, 1.0), out_w, out_h)
 
 NODE_CLASS_MAPPINGS = {
     "Prepimg2Vid": Prepimg2Vid
