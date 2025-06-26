@@ -7,7 +7,7 @@ class UnstitchImages:
         return {"required": {
             "unstitch": ("UNSTITCH", {"forceInput": True}),
             "image": ("IMAGE",),
-            "selection": (["1", "2"], {"default": "1", "tooltip": "Choose which image to output: 1=first, 2=second"}),
+            "selection": (["1", "2"], {"default": "2", "tooltip": "Choose which image to output: 1=first, 2=second"}),
         }}
 
     RETURN_TYPES = ("IMAGE",)
