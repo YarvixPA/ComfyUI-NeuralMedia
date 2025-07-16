@@ -1,137 +1,149 @@
 import os
-from transformers import AutoModelForImageSegmentation, AutoConfig
-from huggingface_hub import hf_hub_download
+import sys
+import math
+import importlib
 import torch
+import torch.nn.functional as F
 from safetensors.torch import load_file as safetensors_load_file
 from torchvision import transforms
-import numpy as np
 from PIL import Image
+import numpy as np
 
-# Optimize precision for matrix multiplications
-torch.set_float32_matmul_precision("high")
+# Optimizar precisión para multiplicaciones matriciales
+torch.set_float32_matmul_precision('high')
 
+# Configuración de modelos según README
 MODEL_CONFIGS = {
-    "BiRefNet": {"resize_dims": (1024, 1024), "repo_id": "ZhengPeng7/BiRefNet"},
-    "BiRefNet_lite": {"resize_dims": (1024, 1024), "repo_id": "ZhengPeng7/BiRefNet_lite"},
-    "BiRefNet_lite-2K": {"resize_dims": (1440, 2560), "repo_id": "ZhengPeng7/BiRefNet_lite-2K"},
-    "RMBG 2.0": {"resize_dims": (1024, 1024), "repo_id": "briaai/RMBG-2.0"}
+    'BiRefNet':         {'repo_id': 'ZhengPeng7/BiRefNet',         'size': (1024, 1024), 'dynamic': False},
+    'BiRefNet_lite':    {'repo_id': 'ZhengPeng7/BiRefNet_lite',    'size': (1024, 1024), 'dynamic': False},
+    'BiRefNet_lite-2K': {'repo_id': 'ZhengPeng7/BiRefNet_lite-2K', 'size': (2560, 1440), 'dynamic': False},
+    'BiRefNet_dynamic': {'repo_id': 'ZhengPeng7/BiRefNet_dynamic','size': None,            'dynamic': True},
 }
 
-def get_transform(resize_dims):
-    return transforms.Compose([
-        transforms.Resize(resize_dims),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-    ])
-
+# Selección de dispositivo
 def select_device(device):
-    return "cuda" if device == 'auto' and torch.cuda.is_available() else device
+    if device == 'auto':
+        return 'cuda' if torch.cuda.is_available() else 'cpu'
+    return device
 
-def initialize_model(repo_id, model_name, resize_dims, update_model):
-    target_dir = os.path.join("ComfyUI", "models", "ComfyUI-NeuralMedia", "RemoveBackground", model_name)
+# Inicializar modelo vendorizado en ComfyUI/models, sin cache global
+def initialize_model(repo_id, model_name, update_model=False):
+    base = os.path.join('ComfyUI', 'models', 'ComfyUI-NeuralMedia', 'RemoveBackground')
+    target_dir = os.path.join(base, model_name)
     os.makedirs(target_dir, exist_ok=True)
-
-    # Files to check/download
-    files_to_download = ["model.safetensors", "config.json", "BiRefNet_config.py", "birefnet.py"]
+    files = ['model.safetensors', 'config.json', 'BiRefNet_config.py', 'birefnet.py']
     model_found = True
-
-    for file_name in files_to_download:
-        file_path = os.path.join(target_dir, file_name)
-        if not os.path.exists(file_path):
+    from huggingface_hub import hf_hub_download
+    for f in files:
+        dst = os.path.join(target_dir, f)
+        if not os.path.exists(dst):
             model_found = False
-            hf_hub_download(repo_id=repo_id, filename=file_name, local_dir=target_dir)
-
+            hf_hub_download(repo_id=repo_id, filename=f, local_dir=target_dir)
     if model_found:
-        print(f"🖌️ Remove Background: {model_name} detected.")
+        print(f"🖌️ Remove Background: {model_name} detectado.")
     elif update_model:
-        print(f"🖌️ Remove Background: Model '{model_name}' updated.")
+        print(f"🖌️ Remove Background: Modelo '{model_name}' actualizado.")
     else:
-        print(f"🖌️ Remove Background: Model '{model_name}' downloaded.")
-
-    # Load model and state_dict
-    model_file = os.path.join(target_dir, "model.safetensors")
-    config = AutoConfig.from_pretrained(target_dir, trust_remote_code=True)
-    model = AutoModelForImageSegmentation.from_config(config, trust_remote_code=True)
-    model.load_state_dict(safetensors_load_file(model_file, device="cpu"))
-
+        print(f"🖌️ Remove Background: Modelo '{model_name}' descargado.")
+    init_py = os.path.join(target_dir, '__init__.py')
+    if not os.path.exists(init_py): open(init_py, 'a').close()
+    if base not in sys.path:
+        sys.path.insert(0, base)
+    mod = importlib.import_module(f"{model_name}.birefnet")
+    BiRefNetClass = getattr(mod, 'BiRefNet')
+    model = BiRefNetClass(bb_pretrained=False)
+    state = safetensors_load_file(os.path.join(target_dir, 'model.safetensors'), device='cpu')
+    model.load_state_dict(state)
     return model
 
-def convert_tensor_to_pil(image_tensor):
-    return Image.fromarray((image_tensor.squeeze().cpu().numpy() * 255).astype(np.uint8))
+# Conversiones
 
-def convert_pil_to_tensor(image_pil):
-    return torch.from_numpy(np.array(image_pil).astype(np.float32) / 255.0).unsqueeze(0)
+def to_pil(tensor):
+    arr = (tensor.squeeze().cpu().numpy() * 255).astype(np.uint8)
+    return Image.fromarray(arr)
+
+# Para imagen (RGB/RGBA) y máscara (L) en formato CHANNEL-LAST
+
+def pil_to_tensor(pil):
+    arr = np.array(pil).astype(np.float32) / 255.0
+    if pil.mode == 'L':  # máscara de un canal
+        tensor = torch.from_numpy(arr).unsqueeze(0)           # [1, H, W]
+    else:  # RGB/RGBA
+        tensor = torch.from_numpy(arr).unsqueeze(0)           # [1, H, W, C]
+    return tensor
 
 class RemoveBackgroundNode:
     @classmethod
     def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "image": ("IMAGE",),
-                "RemoveBackground_model": (["BiRefNet", "BiRefNet_lite", "BiRefNet_lite-2K", "RMBG 2.0 (NO COMMERCIAL USE)"], {"default": "BiRefNet"}),
-                "background_color": ([
-                    "transparency", "green", "white", "red", "yellow", "blue", "black", "pink", "purple", "brown", 
-                    "violet", "wheat", "whitesmoke", "yellowgreen", "turquoise", "tomato", "thistle", "teal", 
-                    "tan", "steelblue", "springgreen", "snow", "slategrey", "slateblue", "skyblue", "orange"
-                ], {"default": "transparency"}),
-                "device": (["auto", "cuda", "cpu"], {"default": "auto"}),
-                "update_model": ("BOOLEAN", {"default": False, "label_on": "Yes", "label_off": "No"})
-            }
-        }
+        return {'required':{
+            'image': ('IMAGE',),
+            'model': (list(MODEL_CONFIGS.keys()), {'default':'BiRefNet'}),
+            'background_color':(['transparency','white','black'],{'default':'transparency'}),
+            'device':(['auto','cuda','cpu'],{'default':'auto'}),
+            'update_model':('BOOLEAN',{'default':False})
+        }}
+    RETURN_TYPES = ('IMAGE','MASK')
+    RETURN_NAMES = ('image','mask')
+    FUNCTION = 'background_remove'
+    CATEGORY = 'ComfyUI-NeuralMedia'
 
-    RETURN_TYPES = ("IMAGE", "MASK",)
-    RETURN_NAMES = ("image", "mask",)
-    FUNCTION = "background_remove"
-    CATEGORY = "ComfyUI-NeuralMedia"
+    def background_remove(self, image, model, background_color, device, update_model):
+        cfg = MODEL_CONFIGS[model]
+        dev = select_device(device)
+        net = initialize_model(cfg['repo_id'], model, update_model).to(dev)
+        net.eval()
+        if dev == 'cuda': net.half()
 
-    def background_remove(self, image, RemoveBackground_model, device, background_color, update_model):
-        # Map input to internal configuration
-        model_map = {
-            "RMBG 2.0 (NO COMMERCIAL USE)": "RMBG 2.0",
-            "BiRefNet": "BiRefNet",
-            "BiRefNet_lite": "BiRefNet_lite",
-            "BiRefNet_lite-2K": "BiRefNet_lite-2K",
-        }
-        model_name = model_map[RemoveBackground_model]
-        model_config = MODEL_CONFIGS[model_name]
+        results_img, results_mask = [], []
+        # Transform básico
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+        ])
+        for t in image:
+            pil = to_pil(t)
+            ow, oh = pil.size
+            # Preprocesado y padding
+            if not cfg['dynamic']:
+                tw, th = cfg['size']
+                scale = min(tw/ow, th/oh)
+                nw, nh = int(ow*scale), int(oh*scale)
+                resized = pil.resize((nw, nh), Image.BILINEAR)
+                inp = transform(resized).unsqueeze(0).to(dev)
+                pad_w = tw - nw
+                pad_h = th - nh
+                inp = F.pad(inp, (0, pad_w, 0, pad_h), value=0)
+            else:
+                inp = transform(pil).unsqueeze(0).to(dev)
+                pad_w = math.ceil(ow/32)*32 - ow
+                pad_h = math.ceil(oh/32)*32 - oh
+                inp = F.pad(inp, (0, pad_w, 0, pad_h), value=0)
+            if dev=='cuda': inp = inp.half()
 
-        model = initialize_model(model_config["repo_id"], model_name, model_config["resize_dims"], update_model)
-
-        device = select_device(device)
-        model.to(device).eval()
-
-        if device == "cuda" and torch.cuda.is_available() and model_name != "RMBG 2.0":
-            model.half()
-
-        print(f"🖌️ Remove Background: Model '{model_name}' loaded on {device}.")
-
-        processed_images, processed_masks = [], []
-        transform = get_transform(model_config["resize_dims"])
-
-        for img in image:
-            original_img = convert_tensor_to_pil(img)
-            transformed_tensor = transform(original_img.resize(model_config["resize_dims"])).unsqueeze(0).to(device)
-            if device == "cuda" and model_name != "RMBG 2.0":
-                transformed_tensor = transformed_tensor.half()
-
+            # Inferencia
             with torch.no_grad():
-                result = model(transformed_tensor)[-1].sigmoid().cpu()
-                result = (result - result.min()) / (result.max() - result.min())
+                out = net(inp)[-1].sigmoid().cpu()
+                out = (out - out.min())/(out.max()-out.min())
+            # Postprocesado máscara
+            if not cfg['dynamic']:
+                m = out[:, :, :nh, :nw]
+                m = F.interpolate(m, size=(oh,ow), mode='bilinear', align_corners=False)
+            else:
+                m = out[:, :, :oh, :ow]
+            mask_pil = to_pil(m)
 
-            mask_img = Image.fromarray((result.squeeze() * 255).numpy().astype(np.uint8))
+            # Composición
+            mode_fg = 'RGBA' if background_color=='transparency' else 'RGB'
+            col = (0,0,0,0) if background_color=='transparency' else background_color
+            bg = Image.new(mode_fg, (ow,oh), col)
+            bg.paste(pil, mask=mask_pil)
 
-            if mask_img.size != original_img.size:
-                mask_img = mask_img.resize(original_img.size, Image.BILINEAR)
+            # Agregar tensores channel-last
+            results_img.append(pil_to_tensor(bg))
+            results_mask.append(pil_to_tensor(mask_pil))
 
-            mode = "RGBA" if background_color == 'transparency' else "RGB"
-            color = (0, 0, 0, 0) if background_color == 'transparency' else background_color
-            background_img = Image.new(mode, mask_img.size, color)
-            background_img.paste(original_img, mask=mask_img)
-
-            processed_images.append(convert_pil_to_tensor(background_img))
-            processed_masks.append(convert_pil_to_tensor(mask_img))
-
-        return torch.cat(processed_images), torch.cat(processed_masks)
+        # Concatenar en batch axis
+        return torch.cat(results_img, dim=0), torch.cat(results_mask, dim=0)
 
 NODE_CLASS_MAPPINGS = {
     "RemoveBackgroundNode": RemoveBackgroundNode
